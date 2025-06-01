@@ -1,5 +1,8 @@
 # Chunking Evaluation
 
+This repository is a fork of brandonstarxel/chunking_evaluation repository, modified for their chunkers to evaluate python source code context.
+
+
 This package, developed as part of our research detailed in the [Chroma Technical Report](https://research.trychroma.com/evaluating-chunking), provides tools for text chunking and evaluation. It allows users to compare different chunking methods and includes implementations of several novel chunking strategies.
 
 ## Features
