@@ -122,7 +122,7 @@ class BaseEvaluation:
         documents = []
         metadatas = []
         for corpus_id in self.corpus_list:
-            corpus_path = corpus_id
+            corpus_path = str(corpus_id)
             if self.corpora_id_paths is not None:
                 corpus_path = self.corpora_id_paths[corpus_id]
     
@@ -294,11 +294,16 @@ class BaseEvaluation:
         if collection is None:
             try:
                 self.chroma_client.delete_collection(collection_name)
-            except ValueError as e:
+            except Exception:
                 pass
             collection = self.chroma_client.create_collection(collection_name, embedding_function=embedding_function, metadata={"hnsw:search_ef":50})
 
         docs, metas = self._get_chunks_and_metadata(chunker)
+
+        # Record avg chunk size
+        lengths = [len(chunk) for chunk in docs]
+        mean_len = sum(lengths) / len(lengths) if lengths else 0
+        print("mean chunk size: {0}".format(mean_len))
 
         BATCH_SIZE = 500
         for i in range(0, len(docs), BATCH_SIZE):
@@ -381,7 +386,7 @@ class BaseEvaluation:
             #     print("FAILED TO LOAD GENERAL EVALUATION")
             try:
                 self.chroma_client.delete_collection("auto_questions")
-            except ValueError as e:
+            except (ValueError, chromadb.errors.NotFoundError) as e:
                 pass
             question_collection = self.chroma_client.create_collection("auto_questions", embedding_function=embedding_function, metadata={"hnsw:search_ef":50})
             question_collection.add(

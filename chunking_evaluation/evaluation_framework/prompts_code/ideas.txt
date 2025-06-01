@@ -1,0 +1,7 @@
+- Aim for the _minimal_ length: do not grab extra code that isn’t used to answer the question. (def not this one)
+YOU MUST NOT INCLUDE THE HEADER FILES IN THE REFERENCES OF THE RESPONSE. (verkar inte behövas)
+Oath om att inte använda 'and' (verkar inte behövas)
+
+Question-generator använder sig av exempel från .csv filen, så vi får inkludera bra frågesvar där
+Säg i prompten att den bör kanske börja vissa frågor med "where"
+QSM3 är som QSM2 fast den vill generera möjligen fler referenser, möjligen större content per referens. Då får vi nog ändra exemplet samt instruktionerna

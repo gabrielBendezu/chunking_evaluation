@@ -86,9 +86,9 @@ class LLMSemanticChunker(BaseChunker):
             {
                 "role": "system", 
                 "content": (
-                    "You are an assistant specialized in splitting text into thematically consistent sections. "
+                    "You are an assistant specialized in splitting code into logically consistent sections. "
                     "The text has been divided into chunks, each marked with <|start_chunk_X|> and <|end_chunk_X|> tags, where X is the chunk number. "
-                    "Your task is to identify the points where splits should occur, such that consecutive chunks of similar themes stay together. "
+                    "Your task is to identify the points where splits should occur, such that consecutive chunks of similar functionality stay together. "
                     "Respond with a list of chunk IDs where you believe a split should be made. For example, if chunks 1 and 2 belong together but chunk 3 starts a new topic, you would suggest a split after chunk 2. THE CHUNKS MUST BE IN ASCENDING ORDER."
                     "Your response should be in the form: 'split_after: 3, 5'."
                 )
@@ -96,7 +96,7 @@ class LLMSemanticChunker(BaseChunker):
             {
                 "role": "user", 
                 "content": (
-                    "CHUNKED_TEXT: " + chunked_input + "\n\n"
+                    "CHUNKED_CODE: " + chunked_input + "\n\n"
                     "Respond only with the IDs of the chunks where you believe a split should occur. YOU MUST RESPOND WITH AT LEAST ONE SPLIT. THESE SPLITS MUST BE IN ASCENDING ORDER AND EQUAL OR LARGER THAN: " + str(current_chunk)+"." + (f"\n\The previous response of {invalid_response} was invalid. DO NOT REPEAT THIS ARRAY OF NUMBERS. Please try again." if invalid_response else "")
                 )
             },

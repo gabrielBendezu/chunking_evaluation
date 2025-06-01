@@ -6,6 +6,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 import logging
+import re
 from typing import (
     AbstractSet,
     Any,
@@ -16,6 +17,7 @@ from typing import (
     Literal,
     Optional,
     Sequence,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -38,7 +40,7 @@ class TextSplitter(BaseChunker, ABC):
         length_function: Callable[[str], int] = len,
         keep_separator: bool = False,
         add_start_index: bool = False,
-        strip_whitespace: bool = True,
+        strip_whitespace: bool = False,
     ) -> None:
         """Create a new TextSplitter.
 
@@ -215,22 +217,63 @@ class FixedTokenChunker(TextSplitter):
         self._allowed_special = allowed_special
         self._disallowed_special = disallowed_special
 
-    def split_text(self, text: str) -> List[str]:
-        def _encode(_text: str) -> List[int]:
-            return self._tokenizer.encode(
-                _text,
-                allowed_special=self._allowed_special,
-                disallowed_special=self._disallowed_special,
-            )
+    # def split_text(self, text: str) -> List[str]:
+    #     def _encode(_text: str) -> List[int]:
+    #         return self._tokenizer.encode(
+    #             _text,
+    #             allowed_special=self._allowed_special,
+    #             disallowed_special=self._disallowed_special,
+    #         )
 
-        tokenizer = Tokenizer(
-            chunk_overlap=self._chunk_overlap,
-            tokens_per_chunk=self._chunk_size,
-            decode=self._tokenizer.decode,
-            encode=_encode,
+    #     tokenizer = Tokenizer(
+    #         chunk_overlap=self._chunk_overlap,
+    #         tokens_per_chunk=self._chunk_size,
+    #         decode=self._tokenizer.decode,
+    #         encode=_encode,
+    #     )
+
+    #     return split_text_on_tokens(text=text, tokenizer=tokenizer)
+
+    # Modified split text logic to preserve offsets
+    def split_text(self, text: str) -> list[str]:
+        input_ids = self._tokenizer.encode(
+            text,
+            allowed_special=self._allowed_special,
+            disallowed_special=self._disallowed_special,
         )
+        # use tiktokens fancy method
+        decoded_text, starts = self._tokenizer.decode_with_offsets(input_ids)
 
-        return split_text_on_tokens(text=text, tokenizer=tokenizer)
+        # Build a list of (start,end) spans:
+        spans: list[tuple[int,int]] = []
+        for i, start in enumerate(starts):
+            if i + 1 < len(starts):
+                end = starts[i+1]
+            else:
+                end = len(decoded_text)
+
+            # If two tokens share the same start, this span is zero‐length and can be skipped or recorded
+            if end > start:
+                spans.append((start, end))
+            #else:
+            #    spans.append((start, start))
+
+        chunks = []
+        step = self._chunk_size - self._chunk_overlap
+        num_tokens = len(spans)
+        for window_start in range(0, num_tokens, step):
+            window_end = min(window_start + self._chunk_size, num_tokens)
+
+            s_dec, e_dec = spans[window_start][0], spans[window_end-1][1]
+
+            # slicing original text 
+            chunk = text[s_dec:e_dec]
+            chunks.append(chunk)
+
+            if window_end == num_tokens:
+                break
+
+        return chunks
 
 @dataclass(frozen=True)
 class Tokenizer:

@@ -1,3 +1,4 @@
+import re
 from typing import List
 import os
 import json
@@ -12,22 +13,22 @@ from openai import OpenAI
 from importlib import resources
 
 class SyntheticEvaluation(BaseEvaluation):
-    def __init__(self, corpora_paths: List[str], queries_csv_path: str, chroma_db_path:str = None, openai_api_key=None):
-        super().__init__(questions_csv_path=queries_csv_path, chroma_db_path=chroma_db_path)
+    def __init__(self, corpora_paths: List[str], queries_csv_path: str, chroma_db_path:str = None, openai_api_key=None, corpora_id_paths=None):
+        super().__init__(questions_csv_path=queries_csv_path, chroma_db_path=chroma_db_path, corpora_id_paths=corpora_id_paths)
         self.corpora_paths = corpora_paths
         self.questions_csv_path = queries_csv_path
         self.client = OpenAI(api_key=openai_api_key)
 
         self.synth_questions_df = None
 
-        with resources.as_file(resources.files('chunking_evaluation.evaluation_framework') / 'prompts') as prompt_path:
-            with open(os.path.join(prompt_path, 'question_maker_system.txt'), 'r') as f:
+        with resources.as_file(resources.files('chunking_evaluation.evaluation_framework') / 'prompts_code') as prompt_path:
+            with open(os.path.join(prompt_path, 'question_maker_system2.txt'), 'r') as f: # Change this to change prompts
                 self.question_maker_system_prompt = f.read()
 
             with open(os.path.join(prompt_path, 'question_maker_approx_system.txt'), 'r') as f:
                 self.question_maker_approx_system_prompt = f.read()
             
-            with open(os.path.join(prompt_path, 'question_maker_user.txt'), 'r') as f:
+            with open(os.path.join(prompt_path, 'question_maker_user.txt'), 'r') as f: 
                 self.question_maker_user_prompt = f.read()
 
             with open(os.path.join(prompt_path, 'question_maker_approx_user.txt'), 'r') as f:
@@ -172,6 +173,86 @@ class SyntheticEvaluation(BaseEvaluation):
                 raise ValueError(f"No match found in the document for the given reference.\nReference: {reference}")
         
         return question, references
+    
+    ## Exactly the same as _extract_question_and_references but it begins at a random header comment, not at any random int less than 4k chars before end
+    ## This now requires a realignment of the start/end indices for the references later on
+    def _extract_question_and_references_header_split(self, corpus, document_length=4000, prev_questions=[]):
+        """
+        Extract a question and its references from `corpus`, choosing the
+        excerpt start based on '#===filename.py===' headers when possible.
+        """
+        # 1. Select the document slice
+        if len(corpus) > document_length:
+            max_start = len(corpus) - document_length
+
+            # Find all header markers of the form "#===some_file.py===..."
+            header_pattern = r"#\s*===\s*[^=]+?\.py\s*===.*"
+            header_positions = [
+                m.start()
+                for m in re.finditer(header_pattern, corpus)
+            ]
+            print(f"[DEBUG] header_positions: {header_positions!r}")
+
+            # Filter headers to those that allow a full chunk
+            valid_starts = [pos for pos in header_positions if pos <= max_start]
+            print(f"[DEBUG] valid_starts (<= {max_start}): {valid_starts!r}")
+
+            if valid_starts:
+                # Pick one of the valid header positions at random
+                start_index = random.choice(valid_starts)
+                print(f"[DEBUG] chose header start_index: {start_index}")
+
+            else:
+                # Fallback: anywhere in the document
+                start_index = random.randint(0, max_start)
+                print(f"[DEBUG] fallback start_index: {start_index}")
+
+            document = corpus[start_index : start_index + document_length]
+        else:
+            document = corpus
+        
+        if prev_questions is not None:
+            if len(prev_questions) > 20:
+                questions_sample = random.sample(prev_questions, 20)
+                prev_questions_str = '\n'.join(questions_sample)
+            else:
+                prev_questions_str = '\n'.join(prev_questions)
+        else:
+            prev_questions_str = ""
+
+        completion = self.client.chat.completions.create(
+            model="gpt-4-turbo",
+            response_format={ "type": "json_object" },
+            max_tokens=600,
+            messages=[
+                {"role": "system", "content": self.question_maker_system_prompt},
+                {"role": "user", "content": self.question_maker_user_prompt.replace("{document}", document).replace("{prev_questions_str}", prev_questions_str)}
+            ]
+        )
+        
+        json_response = json.loads(completion.choices[0].message.content)
+        
+        try:
+            text_references = json_response['references']
+        except KeyError:
+            raise ValueError("The response does not contain a 'references' field.")
+        try:
+            question = json_response['question']
+        except KeyError:
+            raise ValueError("The response does not contain a 'question' field.")
+
+        references = []
+        for reference in text_references:
+            if not isinstance(reference, str):
+                raise ValueError(f"Expected reference to be of type str, but got {type(reference).__name__}")
+            target = rigorous_document_search(corpus, reference)
+            if target is not None:
+                reference, start_index, end_index = target
+                references.append((reference, start_index, end_index))
+            else:
+                raise ValueError(f"No match found in the document for the given reference.\nReference: {reference}")
+        
+        return question, references
 
     def _generate_corpus_questions(self, corpus_id, approx=False, n=5):
         with open(corpus_id, 'r') as file:
@@ -186,7 +267,8 @@ class SyntheticEvaluation(BaseEvaluation):
                     if approx:
                         question, references = self._extract_question_and_approx_references(corpus, 4000, questions_list)
                     else:
-                        question, references = self._extract_question_and_references(corpus, 4000, questions_list)
+                        #question, references = self._extract_question_and_references(corpus, 4000, questions_list)
+                        question, references = self._extract_question_and_references_header_split(corpus, 4000, questions_list)
                     if len(references) > 5:
                         raise ValueError("The number of references exceeds 5.")
                     
@@ -215,6 +297,13 @@ class SyntheticEvaluation(BaseEvaluation):
         return synth_questions_df
 
     def generate_queries_and_excerpts(self, approximate_excerpts=False, num_rounds = -1, queries_per_corpus = 5):
+        # DEBUG
+        print(f"[DEBUG] generate_queries_and_excerpts called with "
+          f"approximate_excerpts={approximate_excerpts}, "
+          f"num_rounds={num_rounds}, "
+          f"queries_per_corpus={queries_per_corpus}")
+        print(f"[DEBUG] corpora_paths = {self.corpora_paths}")
+
         self.synth_questions_df = self._get_synth_questions_df()
 
         rounds = 0

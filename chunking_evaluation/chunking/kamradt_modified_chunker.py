@@ -1,6 +1,8 @@
 # This script is adapted from the Greg Kamradt's notebook on chunking.
 # Original code can be found at: https://github.com/FullStackRetrieval-com/RetrievalTutorials/blob/main/tutorials/LevelsOfTextSplitting/5_Levels_Of_Text_Splitting.ipynb
 
+# This script is further adapted from Chroma Technical Report's adaption to preserve whitespace in order to function with python code
+
 from typing import Optional
 from .base_chunker import BaseChunker
 from .recursive_token_chunker import RecursiveTokenChunker
@@ -11,6 +13,8 @@ from chromadb.api.types import (
 )
 
 import numpy as np
+import os
+import csv
 
 class KamradtModifiedChunker(BaseChunker):
     """
@@ -154,9 +158,29 @@ class KamradtModifiedChunker(BaseChunker):
             list of str: The list of text chunks.
         """
                 
+        #sentences_strips = self.splitter.split_text(text)
+
+        #sentences = [{'sentence': x, 'index' : i} for i, x in enumerate(sentences_strips)]
+
+        self.text = text
         sentences_strips = self.splitter.split_text(text)
 
-        sentences = [{'sentence': x, 'index' : i} for i, x in enumerate(sentences_strips)]
+        sentences = []
+        pos = 0
+        for i, s in enumerate(sentences_strips):
+            start = text.find(s, pos)
+            if start == -1:
+                # fallback if find() fails for any reason
+                print("find() failed for pos: " + pos + " and sentence: " + sentences[i])
+                start = pos
+            end = start + len(s)
+            sentences.append({
+                'sentence':    s,
+                'index':       i,
+                'start_index': start,
+                'end_index':   end
+            })
+            pos = end
 
         sentences = self.combine_sentences(sentences, 3)
 
@@ -199,8 +223,22 @@ class KamradtModifiedChunker(BaseChunker):
             end_index = index
 
             # Slice the sentence_dicts from the current start index to the end index
+            # group = sentences[start_index:end_index + 1]
+            # combined_text = ' '.join([d['sentence'] for d in group])
+            # chunks.append(combined_text)
+            # This approach wont work with the python dataset because it destroys offsets
+
+            # new code to preserve exactly the original whitespace
             group = sentences[start_index:end_index + 1]
-            combined_text = ' '.join([d['sentence'] for d in group])
+            # print(f"[DEBUG] Example sentence dict keys: {sentences[0].keys()}")
+            # print(f"[DEBUG] Full dict: {sentences[0]!r}")
+            # start at the very first character of the first sentence,
+            # end at the very last character of the last sentence
+            start_char = group[0]['start_index']
+            end_char   = group[-1]['end_index']
+            # slice straight out of the original text
+            combined_text = self.text[start_char:end_char]
+
             chunks.append(combined_text)
             
             # Update the start index for the next group
@@ -208,7 +246,14 @@ class KamradtModifiedChunker(BaseChunker):
 
         # The last group, if any sentences remain
         if start_index < len(sentences):
-            combined_text = ' '.join([d['sentence'] for d in sentences[start_index:]])
+            # combined_text = ' '.join([d['sentence'] for d in sentences[start_index:]])
+
+            # new
+            group = sentences[start_index:]
+            start_char = group[0]['start_index']
+            end_char   = group[-1]['end_index']
+            combined_text = self.text[start_char:end_char]
+
             chunks.append(combined_text)
 
         return chunks

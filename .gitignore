@@ -2,3 +2,9 @@
 *.egg-info
 __pycache__/
 **/__pycache__/
+.venv
+.env
+/py_libs_data
+/code_data_generation/py_libs_data
+.DS_Store
+evaluation_results.db

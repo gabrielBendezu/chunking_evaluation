@@ -13,7 +13,18 @@ class ClusterSemanticChunker(BaseChunker):
             chunk_size=min_chunk_size,
             chunk_overlap=0,
             length_function=openai_token_count,
-            separators = ["\n\n", "\n", ".", "?", "!", " ", ""]
+            # separators = ["\n\n", "\n", ".", "?", "!", " ", ""]
+            separators = [ # For Python
+                # First, try to split along class definitions
+                "\nclass ",
+                "\ndef ",
+                "\n\tdef ",
+                # Now split by the normal type of lines
+                "\n\n",
+                "\n",
+                " ",
+                "", # Character-level fallback
+                ]
             )
         
         if embedding_function is None:
