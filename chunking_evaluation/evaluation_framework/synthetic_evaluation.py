@@ -22,7 +22,7 @@ class SyntheticEvaluation(BaseEvaluation):
         self.synth_questions_df = None
 
         with resources.as_file(resources.files('chunking_evaluation.evaluation_framework') / 'prompts_code') as prompt_path:
-            with open(os.path.join(prompt_path, 'question_maker_system2.txt'), 'r') as f: # Change this to change prompts
+            with open(os.path.join(prompt_path, 'question_maker_system.txt'), 'r') as f: # Change this to change prompts
                 self.question_maker_system_prompt = f.read()
 
             with open(os.path.join(prompt_path, 'question_maker_approx_system.txt'), 'r') as f:
